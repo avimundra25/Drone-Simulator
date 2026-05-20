@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DroneSim 2D — Command Interface v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,200;0,400;0,500;0,600;0,700;0,800;1,300&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ===================================================================
+   DESIGN SYSTEM
+   =================================================================== */
+:root {
+  --s0:#020609; --s1:#060e18; --s2:#0a1626; --s3:#0e1e32;
+  --s4:rgba(14,30,50,0.65);
+  --p:#00e5ff; --p-10:rgba(0,229,255,0.10); --p-20:rgba(0,229,255,0.20);
+  --p-40:rgba(0,229,255,0.40); --p-glow:0 0 20px rgba(0,229,255,0.35);
+  --g:#00ff88; --g-10:rgba(0,255,136,0.10); --g-glow:0 0 14px rgba(0,255,136,0.4);
+  --a:#ffaa00; --a-10:rgba(255,170,0,0.10); --a-glow:0 0 14px rgba(255,170,0,0.4);
+  --r:#ff3355; --r-10:rgba(255,51,85,0.10); --r-glow:0 0 14px rgba(255,51,85,0.4);
+  --b:#4488ff; --b-10:rgba(68,136,255,0.10);
+  --text-1:#ddeeff; --text-2:#6a9abf; --text-3:#2d5070;
+  --border:rgba(0,229,255,0.14); --border2:rgba(0,229,255,0.08);
+  --f-ui:'Exo 2',sans-serif; --f-data:'IBM Plex Mono',monospace;
+  --r2:4px; --r4:8px; --r6:12px;
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { background:var(--s0); color:var(--text-1); font-family:var(--f-ui); font-size:14px; overflow-x:hidden; }
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background:var(--s1); }
+::-webkit-scrollbar-thumb { background:var(--p-20); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--p-40); }
+::selection { background:var(--p-20); color:var(--p); }
+a { color:inherit; text-decoration:none; }
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes fadeInUp  { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+@keyframes blink     { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes spin-cw   { to{transform:translate(-50%,-50%) rotate(360deg)} }
+@keyframes spin-ccw  { to{transform:translate(-50%,-50%) rotate(-360deg)} }
+@keyframes drone-hover { 0%,100%{transform:translate(-50%,-50%) translateY(0) rotate(0deg)} 25%{transform:translate(-50%,-50%) translateY(-10px) rotate(.5deg)} 75%{transform:translate(-50%,-50%) translateY(-6px) rotate(-.5deg)} }
+@keyframes radar-rot { to{transform:rotate(360deg)} }
+@keyframes grid-drift { from{transform:translate(0,0)} to{transform:translate(48px,48px)} }
+@keyframes scan-sweep { 0%{top:-2%;opacity:0} 5%{opacity:.4} 95%{opacity:.4} 100%{top:102%;opacity:0} }
+@keyframes pulse-ring { 0%{transform:scale(1);opacity:.7} 100%{transform:scale(2.4);opacity:0} }
+@keyframes float-card { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+@keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+@keyframes bar-grow { from{width:0} to{width:var(--w)} }
+
+.reveal    { animation:fadeInUp .6s ease both; }
+.reveal-1  { animation-delay:.1s; }
+.reveal-2  { animation-delay:.25s; }
+.reveal-3  { animation-delay:.4s; }
+.reveal-4  { animation-delay:.55s; }
+.reveal-5  { animation-delay:.7s; }
+
+/* ── Typography utils ─────────────────────────────────────────── */
+.label    { font-family:var(--f-ui); font-size:10px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:var(--text-3); }
+.data     { font-family:var(--f-data); font-weight:400; }
+.mono     { font-family:var(--f-data); }
+.text-cyan  { color:var(--p); } .text-green { color:var(--g); }
+.text-amber { color:var(--a); } .text-red   { color:var(--r); }
+.text-dim   { color:var(--text-2); }
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.flex { display:flex; } .flex-col { display:flex; flex-direction:column; }
+.items-c { align-items:center; } .justify-b { justify-content:space-between; }
+.gap-1{gap:4px} .gap-2{gap:8px} .gap-3{gap:12px} .gap-4{gap:16px} .gap-6{gap:24px}
+
+/* ── Glass panel ──────────────────────────────────────────────── */
+.glass {
+  background:var(--s4); border:1px solid var(--border); border-radius:var(--r6);
+  backdrop-filter:blur(20px) saturate(160%); position:relative; overflow:hidden;
+}
+.glass::after {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent 5%,var(--p-20) 30%,var(--p-40) 50%,var(--p-20) 70%,transparent 95%);
+  pointer-events:none;
+}
+.panel-head {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 16px; border-bottom:1px solid var(--border2); background:rgba(0,229,255,0.02);
+}
+.panel-title { font-size:10px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--p); }
+.panel-body  { padding:14px; }
+
+/* ── Status pills ─────────────────────────────────────────────── */
+.status-pill {
+  display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:12px;
+  font-family:var(--f-data); font-size:9px; letter-spacing:1.5px; font-weight:500;
+}
+.status-pill.online { background:var(--g-10); border:1px solid rgba(0,255,136,.25); color:var(--g); }
+.status-pill.offline{ background:var(--r-10); border:1px solid rgba(255,51,85,.25);  color:var(--r); }
+.status-pill.warn   { background:var(--a-10); border:1px solid rgba(255,170,0,.25);  color:var(--a); }
+.status-dot { width:5px; height:5px; border-radius:50%; background:currentColor; box-shadow:0 0 5px currentColor; animation:blink 2s ease-in-out infinite; }
+
+/* ===================================================================
+   NAVBAR
+   =================================================================== */
+.navbar {
+  position:sticky; top:0; z-index:900; height:56px;
+  display:flex; align-items:center; justify-content:space-between; padding:0 28px;
+  background:rgba(2,6,9,.85); backdrop-filter:blur(24px) saturate(200%);
+  border-bottom:1px solid var(--border);
+}
+.logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:30px; height:30px; flex-shrink:0; }
+.logo-mark svg { width:100%; height:100%; }
+.logo-wordmark { font-size:13px; font-weight:800; letter-spacing:4px; text-transform:uppercase; color:var(--p); text-shadow:var(--p-glow); line-height:1; }
+.logo-wordmark small { display:block; font-size:8px; font-weight:400; letter-spacing:3px; color:var(--text-3); margin-top:2px; }
+.nav-links { display:flex; list-style:none; gap:2px; }
+.nav-links a { padding:6px 13px; font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-2); border-radius:var(--r2); transition:color .2s,background .2s; }
+.nav-links a:hover,.nav-links a.active { color:var(--p); background:var(--p-10); }
+.nav-right { display:flex; align-items:center; gap:12px; }
+#conn-status { font-family:var(--f-data); font-size:9px; letter-spacing:1px; }
+.nav-btn {
+  width:32px; height:32px; border:1px solid var(--border); border-radius:var(--r4);
+  background:var(--s3); color:var(--text-2); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:13px; transition:all .2s;
+}
+.nav-btn:hover { border-color:var(--p-40); color:var(--p); background:var(--p-10); }
+/* hamburger hidden by default */
+.nav-hamburger { display:none; }
+
+/* ===================================================================
+   HERO
+   =================================================================== */
+.hero {
+  position:relative; overflow:hidden; min-height:92vh;
+  display:flex; align-items:center; padding:80px 28px 40px; gap:60px;
+}
+.hero-bg { position:absolute; inset:0; z-index:0; }
+.hero-bg-grid {
+  position:absolute; inset:0;
+  background-image:linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px);
+  background-size:48px 48px; animation:grid-drift 40s linear infinite;
+}
+.hero-bg-vignette { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 50%,transparent 30%,var(--s0) 80%); }
+.hero-scanline {
+  position:absolute; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent 0%,var(--p) 30%,var(--p) 70%,transparent 100%);
+  opacity:0; animation:scan-sweep 5s ease-in-out infinite;
+}
+/* Floating particles */
+.particle {
+  position:absolute; border-radius:50%; pointer-events:none;
+  background:var(--p); opacity:.6;
+  animation:float-particle linear infinite;
+}
+@keyframes float-particle {
+  0%   { transform:translateY(0)   translateX(0)   scale(1);   opacity:.6; }
+  50%  { opacity:.9; }
+  100% { transform:translateY(-80vh) translateX(var(--dx)) scale(.3); opacity:0; }
+}
+.hero-content { position:relative; z-index:1; flex:1; max-width:560px; }
+.hero-eyebrow {
+  display:inline-flex; align-items:center; gap:8px; font-family:var(--f-data);
+  font-size:10px; letter-spacing:2px; color:var(--p); margin-bottom:20px;
+  padding:4px 12px 4px 4px; border:1px solid var(--p-20); border-radius:20px; background:var(--p-10);
+}
+.hero-eyebrow .tag { background:var(--p); color:var(--s0); font-size:8px; font-weight:700; letter-spacing:2px; padding:2px 7px; border-radius:10px; }
+.hero-title { font-size:clamp(2rem,5vw,3.6rem); font-weight:800; line-height:1.05; letter-spacing:-1px; margin-bottom:20px; }
+.hero-title .hl { color:var(--p); text-shadow:var(--p-glow); font-style:italic; }
+.hero-subtitle { font-size:1rem; font-weight:300; color:var(--text-2); line-height:1.75; max-width:440px; margin-bottom:36px; }
+.hero-actions { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:48px; }
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:8px; padding:11px 24px; font-family:var(--f-ui); font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; border-radius:var(--r4); cursor:pointer; transition:all .22s; border:none; outline:none; }
+.btn-prime { background:var(--p); color:var(--s0); box-shadow:var(--p-glow); }
+.btn-prime:hover { transform:translateY(-2px); box-shadow:0 0 32px rgba(0,229,255,.55),0 8px 24px rgba(0,0,0,.4); }
+.btn-prime:active { transform:translateY(0); }
+.btn-ghost { background:transparent; color:var(--p); border:1px solid var(--p-40); }
+.btn-ghost:hover { background:var(--p-10); transform:translateY(-2px); }
+/* Metrics strip */
+.hero-metrics { display:flex; gap:32px; }
+.hero-metric-val { font-family:var(--f-data); font-size:1.5rem; font-weight:500; color:var(--p); line-height:1; }
+.hero-metric-lbl { font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-3); margin-top:4px; }
+/* Hero visual */
+.hero-visual { position:relative; z-index:1; flex:1; display:flex; justify-content:center; align-items:center; min-height:360px; }
+.drone-stage { position:relative; width:320px; height:320px; }
+.ring { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); border-radius:50%; border:1px solid; }
+.ring-1 { width:310px; height:310px; border-color:rgba(0,229,255,.08); animation:spin-cw  20s linear infinite; }
+.ring-2 { width:240px; height:240px; border-color:rgba(0,229,255,.12); animation:spin-ccw 14s linear infinite; }
+.ring-3 { width:170px; height:170px; border-color:rgba(0,229,255,.18); animation:spin-cw   8s linear infinite; }
+.ring::before { content:''; position:absolute; top:50%; left:-4px; width:7px; height:7px; border-radius:50%; background:var(--p); box-shadow:var(--p-glow); transform:translateY(-50%); }
+.ring-2::before { background:var(--b); box-shadow:0 0 10px var(--b); }
+.ring-3::before { background:var(--g); box-shadow:var(--g-glow); }
+.hero-drone { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); animation:drone-hover 4s ease-in-out infinite; filter:drop-shadow(0 0 8px rgba(0,229,255,.6)) drop-shadow(0 0 24px rgba(0,229,255,.25)); }
+.radar-sweep { position:absolute; top:50%; left:50%; width:140px; height:140px; margin:-70px 0 0 -70px; border-radius:50%; overflow:hidden; pointer-events:none; }
+.radar-sweep::before { content:''; position:absolute; inset:0; background:conic-gradient(from 0deg,transparent 300deg,rgba(0,229,255,.25) 360deg); animation:radar-rot 3s linear infinite; border-radius:50%; }
+
+/* ===================================================================
+   SECTION BASE
+   =================================================================== */
+.section { padding:64px 28px; position:relative; }
+.section-intro { margin-bottom:40px; }
+.section-kicker { font-size:10px; font-weight:700; letter-spacing:4px; text-transform:uppercase; color:var(--p); margin-bottom:8px; }
+.section-h2 { font-size:clamp(1.4rem,3vw,2rem); font-weight:800; letter-spacing:-.5px; color:var(--text-1); margin-bottom:10px; }
+.section-lead { font-size:.93rem; font-weight:300; color:var(--text-2); line-height:1.75; max-width:540px; }
+
+/* ===================================================================
+   DASHBOARD
+   =================================================================== */
+#simulation {
+  background:linear-gradient(180deg,transparent,rgba(0,20,40,.3) 30%,rgba(0,20,40,.3) 70%,transparent);
+  padding:48px 20px;
+}
+.dash-intro { text-align:center; margin-bottom:28px; }
+.dash-grid {
+  display:grid;
+  grid-template-columns:272px 1fr 292px;
+  gap:14px; max-width:1680px; margin:0 auto; align-items:start;
+}
+
+/* ── LEFT CONTROL PANEL ───────────────────────────────────────── */
+.ctrl-panel { display:flex; flex-direction:column; gap:10px; }
+.ctrl-block {
+  background:var(--s4); border:1px solid var(--border); border-radius:var(--r4);
+  backdrop-filter:blur(16px); overflow:hidden;
+}
+.ctrl-block-head { padding:7px 12px; background:rgba(0,229,255,.03); border-bottom:1px solid var(--border2); font-size:9px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--text-3); }
+.ctrl-block-body { padding:12px; display:flex; flex-direction:column; gap:10px; }
+/* Power row */
+.power-row { display:flex; align-items:center; justify-content:space-between; }
+.power-label { font-size:11px; font-weight:700; letter-spacing:3px; color:var(--text-2); }
+.power-id { font-family:var(--f-data); font-size:9px; color:var(--text-3); margin-top:1px; }
+/* Toggle */
+.toggle { position:relative; width:46px; height:24px; flex-shrink:0; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-track { position:absolute; inset:0; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:12px; cursor:pointer; transition:all .28s; }
+.toggle-track::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; background:var(--text-3); border-radius:50%; transition:all .28s cubic-bezier(.4,0,.2,1); }
+.toggle input:checked + .toggle-track { background:var(--p-20); border-color:var(--p-40); box-shadow:var(--p-glow); }
+.toggle input:checked + .toggle-track::after { left:25px; background:var(--p); box-shadow:0 0 8px var(--p); }
+/* Sliders */
+.slider-row { display:flex; flex-direction:column; gap:6px; }
+.slider-meta { display:flex; justify-content:space-between; align-items:center; }
+.slider-name { font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-2); }
+.slider-val { font-family:var(--f-data); font-size:11px; color:var(--p); }
+input[type="range"].ctrl-range {
+  -webkit-appearance:none; appearance:none; width:100%; height:3px;
+  background:rgba(255,255,255,.08); border-radius:2px; outline:none; cursor:pointer;
+}
+input[type="range"].ctrl-range::-webkit-slider-thumb {
+  -webkit-appearance:none; width:14px; height:14px; background:var(--p); border-radius:50%;
+  box-shadow:0 0 8px var(--p); cursor:pointer; transition:transform .15s;
+}
+input[type="range"].ctrl-range::-webkit-slider-thumb:hover { transform:scale(1.3); }
+input[type="range"].ctrl-range.g::-webkit-slider-thumb { background:var(--g); box-shadow:0 0 8px var(--g); }
+input[type="range"].ctrl-range.a::-webkit-slider-thumb { background:var(--a); box-shadow:0 0 8px var(--a); }
+/* Direction pad */
+.dpad { display:grid; grid-template-columns:repeat(3,36px); grid-template-rows:repeat(3,36px); gap:4px; justify-content:center; margin:4px 0; }
+.dpad-btn {
+  background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:var(--r2);
+  color:var(--text-2); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .18s;
+}
+.dpad-btn:hover { background:var(--p-10); border-color:var(--p-40); color:var(--p); }
+.dpad-btn:active { background:var(--p-20); transform:scale(.93); }
+.dpad-center { background:var(--r-10); border-color:rgba(255,51,85,.25); color:var(--r); font-size:10px; letter-spacing:1px; font-weight:700; }
+.dpad-center:hover { background:var(--r-10); border-color:rgba(255,51,85,.5); color:var(--r); }
+/* Select */
+.ctrl-select {
+  width:100%; padding:7px 10px; background:var(--s3); border:1px solid var(--border);
+  border-radius:var(--r2); color:var(--text-1); font-family:var(--f-data); font-size:11px;
+  outline:none; cursor:pointer; transition:border-color .2s;
+  appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2300e5ff'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 10px center;
+}
+.ctrl-select:focus { border-color:var(--p-40); }
+/* Emergency stop */
+.estop-btn {
+  width:100%; padding:12px; background:rgba(255,51,85,.08); border:1px solid rgba(255,51,85,.3);
+  border-radius:var(--r4); color:var(--r); font-family:var(--f-ui); font-size:10px; font-weight:800;
+  letter-spacing:3px; text-transform:uppercase; cursor:pointer; transition:all .2s;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.estop-btn:hover { background:rgba(255,51,85,.18); border-color:rgba(255,51,85,.6); box-shadow:var(--r-glow); }
+.estop-btn:active { transform:scale(.97); }
+/* Indicator row */
+.ind-row { display:flex; align-items:center; justify-content:space-between; }
+.ind-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.ind-dot.on  { background:var(--g); box-shadow:var(--g-glow); animation:blink 2.5s ease-in-out infinite; }
+.ind-dot.off { background:var(--r); box-shadow:var(--r-glow); }
+.ind-dot.warn{ background:var(--a); box-shadow:var(--a-glow); animation:blink 1s ease-in-out infinite; }
+.ind-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--text-3); flex:1; margin-left:8px; }
+.ind-val { font-family:var(--f-data); font-size:10px; color:var(--text-2); }
+
+/* ── CENTER SIMULATION CANVAS ─────────────────────────────────── */
+.sim-wrap {
+  background:var(--s4); border:1px solid var(--border); border-radius:var(--r6);
+  backdrop-filter:blur(20px); overflow:hidden; position:relative;
+}
+.sim-topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:9px 16px; border-bottom:1px solid var(--border2); background:rgba(0,229,255,.02);
+}
+.sim-topbar-left { display:flex; align-items:center; gap:10px; }
+.sim-title { font-size:10px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--p); }
+.sim-coord { font-family:var(--f-data); font-size:9px; color:var(--text-2); }
+.sim-actions { display:flex; gap:6px; }
+.sim-btn {
+  padding:4px 10px; background:rgba(255,255,255,.04); border:1px solid var(--border);
+  border-radius:var(--r2); color:var(--text-2); font-size:9px; font-weight:600;
+  letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; transition:all .18s; font-family:var(--f-ui);
+}
+.sim-btn:hover { background:var(--p-10); border-color:var(--p-40); color:var(--p); }
+.sim-btn.active { background:var(--p-10); border-color:var(--p-40); color:var(--p); }
+/* Canvas area */
+#simCanvas { display:block; width:100%; height:auto; }
+/* HUD overlays (compass, mode badge) */
+.sim-hud-corner {
+  position:absolute; pointer-events:none;
+}
+.hud-tl { top:56px; left:12px; }
+.hud-tr { top:56px; right:12px; }
+.hud-bl { bottom:12px; left:12px; }
+.hud-br { bottom:12px; right:12px; }
+.hud-badge {
+  padding:3px 8px; border:1px solid var(--p-20); border-radius:var(--r2);
+  background:rgba(2,6,9,.7); font-family:var(--f-data); font-size:9px; color:var(--p); letter-spacing:1.5px;
+}
+.hud-compass {
+  width:48px; height:48px; position:relative;
+}
+.hud-compass svg { width:100%; height:100%; }
+
+/* ── RIGHT ANALYTICS PANEL ────────────────────────────────────── */
+.analytics-panel { display:flex; flex-direction:column; gap:10px; }
+/* Telemetry cards grid */
+.tele-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.tele-card {
+  background:var(--s3); border:1px solid var(--border); border-radius:var(--r4); padding:10px 12px;
+  position:relative; overflow:hidden; transition:border-color .2s;
+}
+.tele-card::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+  background:var(--accent-color,var(--p)); box-shadow:0 0 8px var(--accent-color,var(--p));
+}
+.tele-card:hover { border-color:var(--p-40); }
+.tele-label { font-size:8px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:var(--text-3); margin-bottom:4px; }
+.tele-value { font-family:var(--f-data); font-size:1.25rem; font-weight:500; color:var(--text-1); line-height:1; }
+.tele-value span { font-size:.65rem; color:var(--text-3); margin-left:2px; }
+.tele-delta { font-family:var(--f-data); font-size:9px; margin-top:3px; }
+.tele-delta.up { color:var(--g); } .tele-delta.dn { color:var(--r); } .tele-delta.eq { color:var(--text-3); }
+/* Mini sparkline */
+.spark-wrap { position:relative; margin-top:6px; }
+canvas.spark { display:block; width:100%; }
+/* Battery bar */
+.batt-bar-wrap { margin-top:5px; height:3px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+.batt-bar { height:100%; border-radius:2px; transition:width .6s ease; }
+/* Signal bars */
+.sig-bars { display:flex; align-items:flex-end; gap:2px; height:16px; margin-top:5px; }
+.sig-bar { width:4px; border-radius:1px; background:var(--p-20); }
+.sig-bar.on { background:var(--g); }
+/* Graph panel */
+.graph-panel { padding:12px; }
+.graph-canvas-wrap { position:relative; height:80px; }
+canvas.graph-c { display:block; width:100%; height:100%; }
+/* Flight log */
+.log-panel { max-height:160px; overflow-y:auto; }
+.log-entry {
+  display:flex; align-items:baseline; gap:8px; padding:5px 14px;
+  border-bottom:1px solid var(--border2); font-family:var(--f-data); font-size:10px;
+}
+.log-entry:last-child { border-bottom:none; }
+.log-time { color:var(--text-3); white-space:nowrap; flex-shrink:0; }
+.log-msg { color:var(--text-2); }
+.log-msg.info { color:var(--p); } .log-msg.warn { color:var(--a); } .log-msg.err { color:var(--r); } .log-msg.ok { color:var(--g); }
+/* Diagnostics */
+.diag-row { display:flex; align-items:center; gap:10px; padding:5px 14px; border-bottom:1px solid var(--border2); }
+.diag-row:last-child { border-bottom:none; }
+.diag-label { font-size:10px; color:var(--text-2); width:100px; flex-shrink:0; }
+.diag-bar-bg { flex:1; height:4px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+.diag-bar { height:100%; border-radius:2px; transition:width .8s ease; }
+.diag-pct { font-family:var(--f-data); font-size:9px; color:var(--text-3); width:30px; text-align:right; flex-shrink:0; }
+
+/* ===================================================================
+   FEATURES SECTION
+   =================================================================== */
+#features { background:linear-gradient(180deg,transparent,rgba(0,15,30,.4),transparent); }
+.feat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+.feat-card {
+  background:var(--s4); border:1px solid var(--border); border-radius:var(--r6);
+  padding:28px 24px; position:relative; overflow:hidden; cursor:default;
+  transition:transform .3s, box-shadow .3s, border-color .3s;
+  animation:float-card 6s ease-in-out infinite;
+}
+.feat-card:nth-child(2) { animation-delay:.5s; }
+.feat-card:nth-child(3) { animation-delay:1s; }
+.feat-card:nth-child(4) { animation-delay:1.5s; }
+.feat-card:nth-child(5) { animation-delay:2s; }
+.feat-card:nth-child(6) { animation-delay:2.5s; }
+.feat-card:hover { transform:translateY(-6px) !important; border-color:var(--p-40); box-shadow:0 12px 40px rgba(0,0,0,.4),var(--p-glow); }
+.feat-card::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(ellipse at 60% -20%, var(--p-10), transparent 70%);
+  opacity:0; transition:opacity .3s;
+}
+.feat-card:hover::before { opacity:1; }
+.feat-icon {
+  width:44px; height:44px; border-radius:var(--r4); margin-bottom:18px;
+  display:flex; align-items:center; justify-content:center; font-size:20px;
+  background:var(--p-10); border:1px solid var(--p-20);
+}
+.feat-title { font-size:.95rem; font-weight:700; margin-bottom:8px; }
+.feat-desc { font-size:.82rem; color:var(--text-2); line-height:1.7; }
+/* Pulse ring on cards */
+.feat-pulse {
+  position:absolute; top:22px; right:22px; width:10px; height:10px;
+  border-radius:50%; background:var(--g); box-shadow:var(--g-glow);
+}
+.feat-pulse::after {
+  content:''; position:absolute; inset:-5px; border-radius:50%;
+  border:1px solid var(--g); opacity:0; animation:pulse-ring 2s ease-out infinite;
+}
+
+/* ===================================================================
+   FOOTER
+   =================================================================== */
+footer {
+  border-top:1px solid var(--border); padding:48px 28px 28px;
+  background:linear-gradient(180deg,transparent,rgba(0,229,255,.02));
+}
+.footer-grid { display:grid; grid-template-columns:2fr 1fr 1fr; gap:40px; margin-bottom:40px; }
+.footer-brand .logo-wordmark { font-size:15px; margin-bottom:10px; display:block; }
+.footer-desc { font-size:.8rem; color:var(--text-2); line-height:1.8; max-width:260px; margin-bottom:20px; }
+.footer-social { display:flex; gap:8px; }
+.social-btn {
+  width:32px; height:32px; border:1px solid var(--border); border-radius:var(--r4);
+  display:flex; align-items:center; justify-content:center; font-size:12px;
+  color:var(--text-2); cursor:pointer; transition:all .2s;
+}
+.social-btn:hover { border-color:var(--p-40); color:var(--p); background:var(--p-10); }
+.footer-col h4 { font-size:10px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--p); margin-bottom:16px; }
+.footer-col ul { list-style:none; }
+.footer-col ul li { margin-bottom:8px; }
+.footer-col ul li a { font-size:.8rem; color:var(--text-2); transition:color .18s; }
+.footer-col ul li a:hover { color:var(--p); }
+.footer-bottom {
+  padding-top:20px; border-top:1px solid var(--border2);
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+}
+.footer-bottom p { font-size:.75rem; color:var(--text-3); font-family:var(--f-data); }
+
+/* ===================================================================
+   RESPONSIVE
+   =================================================================== */
+@media (max-width:1200px) {
+  .dash-grid { grid-template-columns:240px 1fr; }
+  .analytics-panel { display:grid; grid-template-columns:1fr 1fr; }
+  .dash-grid > .analytics-panel { grid-column:1/-1; }
+}
+@media (max-width:900px) {
+  .dash-grid { grid-template-columns:1fr; }
+  .feat-grid  { grid-template-columns:repeat(2,1fr); }
+  .footer-grid { grid-template-columns:1fr 1fr; }
+  .hero { flex-direction:column; min-height:auto; padding:60px 20px 40px; }
+  .hero-visual { min-height:280px; }
+  .drone-stage { width:240px; height:240px; }
+  .nav-links { display:none; }
+  .nav-hamburger { display:flex; }
+}
+@media (max-width:580px) {
+  .feat-grid { grid-template-columns:1fr; }
+  .tele-grid { grid-template-columns:1fr; }
+  .footer-grid { grid-template-columns:1fr; }
+  .hero-metrics { flex-wrap:wrap; gap:20px; }
+}
+/* ── Simulation run-control buttons ───────────────────────────── */
+.sim-ctrl-btn {
+  flex:1; padding:8px 4px; background:var(--p-10); border:1px solid var(--p-20);
+  border-radius:var(--r2); color:var(--p); font-size:9px; font-weight:700;
+  letter-spacing:1.5px; text-transform:uppercase; cursor:pointer;
+  transition:all .18s; font-family:var(--f-ui);
+}
+.sim-ctrl-btn:hover  { background:var(--p-20); border-color:var(--p-40); }
+.sim-ctrl-btn:active { transform:scale(.96); }
+</style>
+</head>
+<body>
+
+<!-- ===================================================================
+     NAVIGATION
+     =================================================================== -->
+<nav class="navbar">
+  <a class="logo" href="#">
+    <div class="logo-mark">
+      <!-- Drone icon SVG -->
+      <svg viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="15" cy="15" r="4" fill="none" stroke="#00e5ff" stroke-width="1.5"/>
+        <line x1="15" y1="11" x2="15" y2="4"  stroke="#00e5ff" stroke-width="1" stroke-dasharray="2 1"/>
+        <line x1="15" y1="19" x2="15" y2="26" stroke="#00e5ff" stroke-width="1" stroke-dasharray="2 1"/>
+        <line x1="11" y1="15" x2="4"  y2="15" stroke="#00e5ff" stroke-width="1" stroke-dasharray="2 1"/>
+        <line x1="19" y1="15" x2="26" y2="15" stroke="#00e5ff" stroke-width="1" stroke-dasharray="2 1"/>
+        <circle cx="4"  cy="4"  r="2.5" fill="none" stroke="#00e5ff" stroke-width="1"/>
+        <circle cx="26" cy="4"  r="2.5" fill="none" stroke="#00e5ff" stroke-width="1"/>
+        <circle cx="4"  cy="26" r="2.5" fill="none" stroke="#00e5ff" stroke-width="1"/>
+        <circle cx="26" cy="26" r="2.5" fill="none" stroke="#00e5ff" stroke-width="1"/>
+        <circle cx="4"  cy="4"  r="1"   fill="#00e5ff" opacity=".8"/>
+        <circle cx="26" cy="4"  r="1"   fill="#00e5ff" opacity=".8"/>
+        <circle cx="4"  cy="26" r="1"   fill="#4488ff" opacity=".8"/>
+        <circle cx="26" cy="26" r="1"   fill="#4488ff" opacity=".8"/>
+      </svg>
+    </div>
+    <div class="logo-wordmark">
+      DroneSim
+      <small>2D COMMAND INTERFACE</small>
+    </div>
+  </a>
+
+  <ul class="nav-links">
+    <li><a href="#"          class="active">Home</a></li>
+    <li><a href="#simulation">Simulation</a></li>
+    <li><a href="#simulation">Controls</a></li>
+    <li><a href="#features"  >Analytics</a></li>
+    <li><a href="#features"  >About</a></li>
+  </ul>
+
+  <div class="nav-right">
+    <span id="conn-status" class="status-pill online">
+      <span class="status-dot"></span> LIVE
+    </span>
+    <button class="nav-btn" title="Notifications">🔔</button>
+    <button class="nav-btn" title="Settings">⚙️</button>
+    <button class="nav-btn nav-hamburger" title="Menu">☰</button>
+  </div>
+</nav>
+
+<!-- ===================================================================
+     HERO
+     =================================================================== -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="hero-bg-grid"></div>
+    <div class="hero-bg-vignette"></div>
+    <div class="hero-scanline"></div>
+    <!-- Particles injected by JS -->
+  </div>
+
+  <div class="hero-content">
+    <div class="hero-eyebrow reveal reveal-1">
+      <span class="tag">v3.1.0</span>
+      ADVANCED UAV SIMULATION PLATFORM
+    </div>
+    <h1 class="hero-title reveal reveal-2">
+      Advanced <span class="hl">2D Drone</span><br>
+      Simulation<br>Environment
+    </h1>
+    <p class="hero-subtitle reveal reveal-3">
+      Military-grade drone control interface with real-time telemetry,
+      AI-assisted navigation, obstacle avoidance, and precision flight path
+      management. Built for professionals.
+    </p>
+    <div class="hero-actions reveal reveal-4">
+      <a href="#simulation" class="btn btn-prime">
+        ▶&nbsp; Launch Simulation
+      </a>
+      <button class="btn btn-ghost">
+        ⬡&nbsp; View Documentation
+      </button>
+    </div>
+    <div class="hero-metrics reveal reveal-5">
+      <div>
+        <div class="hero-metric-val" id="hero-m1">99.8<span style="font-size:.9rem">%</span></div>
+        <div class="hero-metric-lbl">Uptime</div>
+      </div>
+      <div style="width:1px;background:var(--border);align-self:stretch"></div>
+      <div>
+        <div class="hero-metric-val" id="hero-m2">4.2<span style="font-size:.9rem">ms</span></div>
+        <div class="hero-metric-lbl">Latency</div>
+      </div>
+      <div style="width:1px;background:var(--border);align-self:stretch"></div>
+      <div>
+        <div class="hero-metric-val" id="hero-m3">12</div>
+        <div class="hero-metric-lbl">Active Drones</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero visual – orbiting rings + drone SVG -->
+  <div class="hero-visual reveal reveal-3">
+    <div class="drone-stage">
+      <div class="ring ring-1"></div>
+      <div class="ring ring-2"></div>
+      <div class="ring ring-3"></div>
+      <div class="radar-sweep"></div>
+      <!-- Drone SVG -->
+      <div class="hero-drone">
+        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+          <!-- Arms -->
+          <line x1="40" y1="40" x2="12" y2="12" stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+          <line x1="40" y1="40" x2="68" y2="12" stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+          <line x1="40" y1="40" x2="12" y2="68" stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+          <line x1="40" y1="40" x2="68" y2="68" stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+          <!-- Motor circles -->
+          <circle cx="12" cy="12" r="7" fill="none" stroke="#00e5ff" stroke-width="1.5"/>
+          <circle cx="68" cy="12" r="7" fill="none" stroke="#4488ff" stroke-width="1.5"/>
+          <circle cx="12" cy="68" r="7" fill="none" stroke="#4488ff" stroke-width="1.5"/>
+          <circle cx="68" cy="68" r="7" fill="none" stroke="#00e5ff" stroke-width="1.5"/>
+          <!-- Propellers -->
+          <ellipse cx="12" cy="12" rx="11" ry="3" fill="rgba(0,229,255,.25)" transform="rotate(30,12,12)"/>
+          <ellipse cx="68" cy="12" rx="11" ry="3" fill="rgba(68,136,255,.25)" transform="rotate(-30,68,12)"/>
+          <ellipse cx="12" cy="68" rx="11" ry="3" fill="rgba(68,136,255,.25)" transform="rotate(-30,12,68)"/>
+          <ellipse cx="68" cy="68" rx="11" ry="3" fill="rgba(0,229,255,.25)" transform="rotate(30,68,68)"/>
+          <!-- Body -->
+          <rect x="33" y="33" width="14" height="14" rx="3" fill="#0a1626" stroke="#00e5ff" stroke-width="1.5"/>
+          <!-- Camera -->
+          <circle cx="40" cy="40" r="4" fill="none" stroke="#00ff88" stroke-width="1"/>
+          <circle cx="40" cy="40" r="1.5" fill="#00ff88"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================
+     SIMULATION DASHBOARD
+     =================================================================== -->
+<section id="simulation" class="section">
+  <div class="dash-intro">
+    <div class="section-kicker">Mission Control</div>
+    <h2 class="section-h2">Simulation Command Center</h2>
+  </div>
+
+  <div class="dash-grid">
+
+    <!-- ── LEFT CONTROL PANEL ──────────────────────────────────── -->
+    <aside class="ctrl-panel">
+
+      <!-- Power block -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head">System Power</div>
+        <div class="ctrl-block-body">
+          <div class="power-row">
+            <div>
+              <div class="power-label">DRONE-01</div>
+              <div class="power-id mono">UID-FF:A4:2E:09</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="powerToggle" checked>
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <!-- Status indicators -->
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+            <div class="ind-row">
+              <span class="ind-dot on"></span>
+              <span class="ind-label">Flight Control</span>
+              <span class="ind-val mono">ACTIVE</span>
+            </div>
+            <div class="ind-row">
+              <span class="ind-dot on"></span>
+              <span class="ind-label">GPS Lock</span>
+              <span class="ind-val mono" id="gpsLockVal">12 SV</span>
+            </div>
+            <div class="ind-row">
+              <span class="ind-dot warn" id="battDot"></span>
+              <span class="ind-label">Battery</span>
+              <span class="ind-val mono" id="battPctNav">78%</span>
+            </div>
+            <div class="ind-row">
+              <span class="ind-dot on"></span>
+              <span class="ind-label">Telemetry Link</span>
+              <span class="ind-val mono">SYNC</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flight params -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head">Flight Parameters</div>
+        <div class="ctrl-block-body">
+          <div class="slider-row">
+            <div class="slider-meta">
+              <span class="slider-name">Altitude</span>
+              <span class="slider-val" id="altVal">120 m</span>
+            </div>
+            <input type="range" class="ctrl-range" id="altSlider" min="10" max="400" value="120">
+          </div>
+          <div class="slider-row">
+            <div class="slider-meta">
+              <span class="slider-name">Speed</span>
+              <span class="slider-val" id="speedVal">14 m/s</span>
+            </div>
+            <input type="range" class="ctrl-range g" id="speedSlider" min="1" max="60" value="14">
+          </div>
+          <div class="slider-row">
+            <div class="slider-meta">
+              <span class="slider-name">Heading</span>
+              <span class="slider-val" id="headingVal">045°</span>
+            </div>
+            <input type="range" class="ctrl-range a" id="headingSlider" min="0" max="359" value="45">
+          </div>
+        </div>
+      </div>
+
+      <!-- Direction controls -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head">Direction Override</div>
+        <div class="ctrl-block-body">
+          <div class="dpad">
+            <div></div>
+            <button class="dpad-btn" id="dpad-n"  title="North">↑</button>
+            <div></div>
+            <button class="dpad-btn" id="dpad-w"  title="West">←</button>
+            <button class="dpad-btn dpad-center" id="dpad-stop" title="Hold">◼</button>
+            <button class="dpad-btn" id="dpad-e"  title="East">→</button>
+            <div></div>
+            <button class="dpad-btn" id="dpad-s"  title="South">↓</button>
+            <div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Simulation run controls -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head">Simulation Control</div>
+        <div class="ctrl-block-body" style="flex-direction:row;gap:6px;padding:10px 12px">
+          <button class="sim-ctrl-btn" id="btnStart">▶ Start</button>
+          <button class="sim-ctrl-btn" id="btnPause">⏸ Pause</button>
+          <button class="sim-ctrl-btn" id="btnReset">↺ Reset</button>
+        </div>
+      </div>
+
+      <!-- Environment -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head">Environment</div>
+        <div class="ctrl-block-body">
+          <div class="slider-row">
+            <div class="slider-meta"><span class="slider-name">Weather</span></div>
+            <select class="ctrl-select" id="weatherSel">
+              <option value="clear">☀  Clear</option>
+              <option value="cloudy">🌤  Partly Cloudy</option>
+              <option value="rain">🌧  Rain</option>
+              <option value="storm">⛈  Storm</option>
+              <option value="fog">🌫  Fog</option>
+            </select>
+          </div>
+          <div class="slider-row">
+            <div class="slider-meta"><span class="slider-name">Camera Mode</span></div>
+            <select class="ctrl-select" id="camMode">
+              <option value="top">Top-Down (90°)</option>
+              <option value="iso">Isometric</option>
+              <option value="fpv">First-Person (FPV)</option>
+              <option value="follow">Follow Cam</option>
+            </select>
+          </div>
+          <div class="slider-row">
+            <div class="slider-meta">
+              <span class="slider-name">Wind Speed</span>
+              <span class="slider-val" id="windVal">8 kt</span>
+            </div>
+            <input type="range" class="ctrl-range" id="windSlider" min="0" max="40" value="8">
+          </div>
+        </div>
+      </div>
+
+      <!-- Emergency stop -->
+      <button class="estop-btn" id="estopBtn">
+        <span style="font-size:16px">⬡</span> EMERGENCY STOP
+      </button>
+
+    </aside>
+
+    <!-- ── CENTER SIMULATION ───────────────────────────────────── -->
+    <div class="sim-wrap">
+      <div class="sim-topbar">
+        <div class="sim-topbar-left">
+          <div class="status-dot" style="background:var(--g);box-shadow:var(--g-glow);animation:blink 1.2s infinite"></div>
+          <span class="sim-title">Simulation View</span>
+          <span class="sim-coord mono" id="simCoord">N 40.7128° W 74.0060°</span>
+        </div>
+        <div class="sim-actions">
+          <button class="sim-btn" id="btnGrid">Grid</button>
+          <button class="sim-btn active" id="btnWaypoints">Waypoints</button>
+          <button class="sim-btn active" id="btnTrail">Trail</button>
+          <button class="sim-btn" id="btnRadar">Radar</button>
+          <button class="sim-btn" id="btnFullscreen">⛶</button>
+        </div>
+      </div>
+
+      <canvas id="simCanvas" width="900" height="560"></canvas>
+
+      <!-- HUD overlays -->
+      <div class="sim-hud-corner hud-tl">
+        <div class="hud-badge" id="modeBadge">MODE: AUTO</div>
+      </div>
+      <div class="sim-hud-corner hud-tr">
+        <div class="hud-compass">
+          <svg viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="22" stroke="rgba(0,229,255,.2)" stroke-width="1"/>
+            <text x="24" y="7"  text-anchor="middle" fill="#00e5ff" font-size="7" font-family="IBM Plex Mono">N</text>
+            <text x="24" y="46" text-anchor="middle" fill="#6a9abf" font-size="7" font-family="IBM Plex Mono">S</text>
+            <text x="5"  y="28" text-anchor="middle" fill="#6a9abf" font-size="7" font-family="IBM Plex Mono">W</text>
+            <text x="44" y="28" text-anchor="middle" fill="#6a9abf" font-size="7" font-family="IBM Plex Mono">E</text>
+            <polygon id="compassNeedle" points="24,8 21,24 24,22 27,24" fill="#00e5ff" opacity=".9"/>
+            <circle cx="24" cy="24" r="2" fill="#00e5ff"/>
+          </svg>
+        </div>
+      </div>
+      <div class="sim-hud-corner hud-bl">
+        <div class="hud-badge" id="zoomBadge">ZOOM: 1.0×</div>
+      </div>
+      <div class="sim-hud-corner hud-br">
+        <div class="hud-badge" id="timeBadge">T+ 00:00:00</div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT ANALYTICS PANEL ──────────────────────────────── -->
+    <aside class="analytics-panel">
+
+      <!-- Telemetry cards -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head" style="padding:7px 12px">Live Telemetry</div>
+        <div style="padding:10px">
+          <div class="tele-grid">
+            <!-- Altitude -->
+            <div class="tele-card" style="--accent-color:var(--p)">
+              <div class="tele-label">Altitude</div>
+              <div class="tele-value"><span id="t-alt">120</span><span>m</span></div>
+              <div class="tele-delta up" id="t-alt-d">▲ +2.1</div>
+            </div>
+            <!-- Speed -->
+            <div class="tele-card" style="--accent-color:var(--g)">
+              <div class="tele-label">Speed</div>
+              <div class="tele-value"><span id="t-spd">14.2</span><span>m/s</span></div>
+              <div class="tele-delta eq" id="t-spd-d">━ stable</div>
+            </div>
+            <!-- Battery -->
+            <div class="tele-card" style="--accent-color:var(--a)">
+              <div class="tele-label">Battery</div>
+              <div class="tele-value"><span id="t-batt">78</span><span>%</span></div>
+              <div class="batt-bar-wrap">
+                <div class="batt-bar" id="battBar" style="width:78%;background:var(--a)"></div>
+              </div>
+            </div>
+            <!-- Signal -->
+            <div class="tele-card" style="--accent-color:var(--g)">
+              <div class="tele-label">Signal</div>
+              <div class="tele-value"><span id="t-sig">-68</span><span>dBm</span></div>
+              <div class="sig-bars" id="sigBars">
+                <div class="sig-bar on" style="height:4px"></div>
+                <div class="sig-bar on" style="height:7px"></div>
+                <div class="sig-bar on" style="height:10px"></div>
+                <div class="sig-bar on" style="height:13px"></div>
+                <div class="sig-bar"    style="height:16px"></div>
+              </div>
+            </div>
+            <!-- GPS -->
+            <div class="tele-card" style="--accent-color:var(--b)">
+              <div class="tele-label">GPS Coord</div>
+              <div style="font-family:var(--f-data);font-size:.72rem;color:var(--text-1);margin-top:3px;line-height:1.6">
+                <span id="t-lat">40.7128°N</span><br>
+                <span id="t-lon">74.0060°W</span>
+              </div>
+            </div>
+            <!-- Health -->
+            <div class="tele-card" style="--accent-color:var(--g)">
+              <div class="tele-label">Health</div>
+              <div class="tele-value"><span id="t-hlth">98</span><span>%</span></div>
+              <div class="tele-delta ok" id="t-hlth-d">● All Systems OK</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Altitude graph -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head" style="padding:7px 12px">Altitude History</div>
+        <div class="graph-panel">
+          <div class="graph-canvas-wrap">
+            <canvas id="graphCanvas" style="width:100%;height:80px"></canvas>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px">
+            <span class="label">0m</span>
+            <span class="label">30s</span>
+            <span class="label" id="graphMax">400m</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flight log -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head" style="padding:7px 12px">Flight Log</div>
+        <div class="log-panel" id="flightLog">
+          <div class="log-entry"><span class="log-time">00:00:01</span><span class="log-msg ok">System boot complete</span></div>
+          <div class="log-entry"><span class="log-time">00:00:02</span><span class="log-msg info">GPS lock acquired — 12 satellites</span></div>
+          <div class="log-entry"><span class="log-time">00:00:04</span><span class="log-msg ok">Motors armed</span></div>
+          <div class="log-entry"><span class="log-time">00:00:06</span><span class="log-msg info">Takeoff initiated</span></div>
+        </div>
+      </div>
+
+      <!-- Diagnostics -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head" style="padding:7px 12px">Diagnostics</div>
+        <div style="padding:8px 0">
+          <div class="diag-row">
+            <span class="diag-label">CPU Load</span>
+            <div class="diag-bar-bg"><div class="diag-bar" id="d-cpu" style="width:34%;background:var(--p)"></div></div>
+            <span class="diag-pct mono" id="d-cpu-v">34%</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">Memory</span>
+            <div class="diag-bar-bg"><div class="diag-bar" id="d-mem" style="width:58%;background:var(--a)"></div></div>
+            <span class="diag-pct mono" id="d-mem-v">58%</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">Gyro Drift</span>
+            <div class="diag-bar-bg"><div class="diag-bar" id="d-gyro" style="width:7%;background:var(--g)"></div></div>
+            <span class="diag-pct mono" id="d-gyro-v">7%</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">Motor Temp</span>
+            <div class="diag-bar-bg"><div class="diag-bar" id="d-temp" style="width:52%;background:var(--a)"></div></div>
+            <span class="diag-pct mono" id="d-temp-v">52°C</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">Link Quality</span>
+            <div class="diag-bar-bg"><div class="diag-bar" id="d-link" style="width:88%;background:var(--g)"></div></div>
+            <span class="diag-pct mono" id="d-link-v">88%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="ctrl-block">
+        <div class="ctrl-block-head" style="padding:7px 12px">Notifications</div>
+        <div style="padding:10px;display:flex;flex-direction:column;gap:6px" id="notifPanel">
+          <div style="display:flex;align-items:flex-start;gap:8px;padding:8px;background:var(--a-10);border:1px solid rgba(255,170,0,.2);border-radius:var(--r4)">
+            <span style="color:var(--a);font-size:12px;margin-top:1px">⚠</span>
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--a)">LOW BATTERY</div>
+              <div style="font-size:10px;color:var(--text-2);margin-top:2px">Battery at 78%. Plan RTH in 12 min.</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:8px;padding:8px;background:var(--g-10);border:1px solid rgba(0,255,136,.2);border-radius:var(--r4)">
+            <span style="color:var(--g);font-size:12px;margin-top:1px">✓</span>
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--g)">WAYPOINT REACHED</div>
+              <div style="font-size:10px;color:var(--text-2);margin-top:2px">WP-04 checkpoint confirmed.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+</section>
+
+<!-- ===================================================================
+     FEATURES SECTION
+     =================================================================== -->
+<section id="features" class="section">
+  <div class="section-intro">
+    <div class="section-kicker">Platform Capabilities</div>
+    <h2 class="section-h2">Built for Professional Operations</h2>
+    <p class="section-lead">Every module engineered to military-grade specifications, delivering maximum situational awareness and autonomous precision.</p>
+  </div>
+
+  <div class="feat-grid">
+    <div class="feat-card">
+      <div class="feat-pulse"></div>
+      <div class="feat-icon">🧠</div>
+      <div class="feat-title">AI Navigation</div>
+      <p class="feat-desc">Autonomous pathfinding powered by deep reinforcement learning. Adapts in real-time to obstacles, no-fly zones, and dynamic wind conditions.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-pulse" style="background:var(--p);box-shadow:var(--p-glow)"></div>
+      <div class="feat-icon" style="background:var(--p-10);border-color:var(--p-20)">📡</div>
+      <div class="feat-title">Real-Time Telemetry</div>
+      <p class="feat-desc">Sub-5ms latency data streaming with 96 sensor channels. Live altitude, velocity, orientation, and health monitoring across every subsystem.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-pulse" style="background:var(--r);box-shadow:var(--r-glow)"></div>
+      <div class="feat-icon" style="background:var(--r-10);border-color:rgba(255,51,85,.2)">🛡</div>
+      <div class="feat-title">Obstacle Detection</div>
+      <p class="feat-desc">360° LiDAR-based collision avoidance with 30cm precision. Simultaneous mapping and localization keeps every flight path safe and optimal.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-pulse" style="background:var(--b);box-shadow:0 0 14px var(--b)"></div>
+      <div class="feat-icon" style="background:var(--b-10);border-color:rgba(68,136,255,.2)">🌦</div>
+      <div class="feat-title">Weather Adaptation</div>
+      <p class="feat-desc">Integrated meteorological sensor fusion. Dynamically adjusts flight envelope, power profile, and route planning based on live weather data.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-pulse" style="background:var(--a);box-shadow:var(--a-glow)"></div>
+      <div class="feat-icon" style="background:var(--a-10);border-color:rgba(255,170,0,.2)">🎯</div>
+      <div class="feat-title">Precision Flight</div>
+      <p class="feat-desc">RTK-GPS positioning with ±2cm accuracy. Mission waypoint execution with configurable loiter patterns, hover hold, and automatic landing.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-pulse"></div>
+      <div class="feat-icon">📊</div>
+      <div class="feat-title">Smart Analytics</div>
+      <p class="feat-desc">Post-mission analytics with 3D replay, power efficiency scores, route optimisation suggestions, and exportable mission reports.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================
+     FOOTER
+     =================================================================== -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <span class="logo-wordmark">DroneSim<small style="display:block;font-size:8px;letter-spacing:3px;color:var(--text-3);margin-top:2px">2D COMMAND INTERFACE</small></span>
+      <p class="footer-desc">A professional-grade aerospace simulation environment for drone operators, researchers, and defense engineers. Precision engineered for the future of autonomous flight.</p>
+      <div class="footer-social">
+        <div class="social-btn">𝕏</div>
+        <div class="social-btn">in</div>
+        <div class="social-btn">▶</div>
+        <div class="social-btn">⬡</div>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <ul>
+        <li><a href="#">Simulation Engine</a></li>
+        <li><a href="#">Telemetry API</a></li>
+        <li><a href="#">Mission Planner</a></li>
+        <li><a href="#">Analytics Suite</a></li>
+        <li><a href="#">SDK &amp; Plugins</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Resources</h4>
+      <ul>
+        <li><a href="#">Documentation</a></li>
+        <li><a href="#">API Reference</a></li>
+        <li><a href="#">Tutorials</a></li>
+        <li><a href="#">Community Forum</a></li>
+        <li><a href="#">Changelog</a></li>
+      </ul>
+    </div>
+
+  </div>
+  <div class="footer-bottom">
+    <p>© 2025 DroneSim Technologies. All rights reserved. v3.1.0-rc4</p>
+    <p>EXPORT CONTROLLED · ITAR COMPLIANCE REQUIRED · FOR AUTHORIZED USE ONLY</p>
+  </div>
+</footer>
+
+<!-- ===================================================================
+     JAVASCRIPT
+     =================================================================== -->
+<script>
+// ─────────────────────────────────────────────────────────────────
+//  WebSocket — auto-detects host so it works locally AND via
+//  GitHub Codespace port-forwarding (wss://xxx.github.dev/ws)
+// ─────────────────────────────────────────────────────────────────
+const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const wsHost  = (location.hostname && location.hostname !== '') ? location.host : 'localhost:8080';
+const ws      = new WebSocket(`${wsProto}//${wsHost}/ws`);
+
+let backendState = {
+  drone: { x: 0, y: 0, fuel: 100, state: 0 },
+  target: { x: 9, y: 9 },
+  obstacles: [],
+  fuelStations: [],
+  isRunning: false
+};
+
+let trail         = [];
+let showGrid      = false;
+let showTrail     = true;
+let showRadar     = false;
+let missionTime   = 0;
+let lastStateLog  = -1;
+const stateNames  = { 0:'IDLE', 1:'TRACKING', 2:'SEEK-FUEL', 3:'EVADING' };
+
+// ── WebSocket lifecycle ───────────────────────────────────────────
+function setConnStatus(online) {
+  const el = document.getElementById('conn-status');
+  el.className = 'status-pill ' + (online ? 'online' : 'offline');
+  el.innerHTML = `<span class="status-dot"></span> ${online ? 'LIVE' : 'OFFLINE'}`;
+}
+
+ws.onopen  = () => { setConnStatus(true);  addLog('WebSocket connected', 'ok'); };
+ws.onclose = () => { setConnStatus(false); addLog('Connection lost — is the server running?', 'err'); };
+ws.onerror = () => { setConnStatus(false); addLog('WebSocket error', 'err'); };
+
+ws.onmessage = (event) => {
+  try {
+    const newState = JSON.parse(event.data);
+
+    // Append to trail only when the drone actually moved
+    if (newState.isRunning &&
+        (newState.drone.x !== backendState.drone.x ||
+         newState.drone.y !== backendState.drone.y)) {
+      trail.push({ x: backendState.drone.x, y: backendState.drone.y });
+      if (trail.length > 80) trail.shift();
+    }
+
+    backendState = newState;
+    updateTelemetryUI();
+  } catch (e) {
+    console.error('[WS] Parse error:', e);
+  }
+};
+
+function sendAction(obj) {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ── Simulation run controls ───────────────────────────────────────
+document.getElementById('btnStart').addEventListener('click', () => {
+  sendAction({ action: 'START' });
+  document.getElementById('powerToggle').checked = true;
+  addLog('Simulation started', 'ok');
+});
+document.getElementById('btnPause').addEventListener('click', () => {
+  sendAction({ action: 'PAUSE' });
+  document.getElementById('powerToggle').checked = false;
+  addLog('Simulation paused', 'warn');
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  trail = [];
+  missionTime = 0;
+  sendAction({ action: 'RESET' });
+  document.getElementById('powerToggle').checked = false;
+  addLog('Simulation reset', 'info');
+});
+
+// Power toggle
+document.getElementById('powerToggle').addEventListener('change', e => {
+  sendAction({ action: e.target.checked ? 'START' : 'PAUSE' });
+});
+
+// Emergency stop
+document.getElementById('estopBtn').addEventListener('click', () => {
+  sendAction({ action: 'PAUSE' });
+  document.getElementById('powerToggle').checked = false;
+  addLog('⚠ EMERGENCY STOP activated', 'err');
+});
+
+// ── D-Pad — manual move override ─────────────────────────────────
+function manualMove(dx, dy) { sendAction({ action: 'MANUAL_MOVE', dx, dy }); }
+
+document.getElementById('dpad-n').addEventListener('click',    () => manualMove( 0, -1));
+document.getElementById('dpad-s').addEventListener('click',    () => manualMove( 0,  1));
+document.getElementById('dpad-w').addEventListener('click',    () => manualMove(-1,  0));
+document.getElementById('dpad-e').addEventListener('click',    () => manualMove( 1,  0));
+document.getElementById('dpad-stop').addEventListener('click', () => {
+  sendAction({ action: 'PAUSE' });
+  addLog('Hold command sent', 'warn');
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+  switch (e.key) {
+    case 'ArrowUp':    case 'w': case 'W': manualMove( 0, -1); break;
+    case 'ArrowDown':  case 's': case 'S': manualMove( 0,  1); break;
+    case 'ArrowLeft':  case 'a': case 'A': manualMove(-1,  0); break;
+    case 'ArrowRight': case 'd': case 'D': manualMove( 1,  0); break;
+    case ' ':
+      e.preventDefault();
+      sendAction({ action: backendState.isRunning ? 'PAUSE' : 'START' });
+      break;
+    case 'r': case 'R':
+      trail = []; missionTime = 0;
+      sendAction({ action: 'RESET' });
+      break;
+  }
+});
+
+// ── Slider displays (cosmetic — local only) ───────────────────────
+document.getElementById('altSlider').addEventListener('input',     e =>
+  document.getElementById('altVal').textContent     = e.target.value + ' m');
+document.getElementById('speedSlider').addEventListener('input',   e =>
+  document.getElementById('speedVal').textContent   = e.target.value + ' m/s');
+document.getElementById('headingSlider').addEventListener('input', e =>
+  document.getElementById('headingVal').textContent = String(e.target.value).padStart(3,'0') + '°');
+document.getElementById('windSlider').addEventListener('input',    e =>
+  document.getElementById('windVal').textContent    = e.target.value + ' kt');
+
+// ── Canvas setup ──────────────────────────────────────────────────
+const canvas = document.getElementById('simCanvas');
+const ctx    = canvas.getContext('2d');
+const CW = canvas.width;    // 900
+const CH = canvas.height;   // 560
+const GX = CW / 10;         // cell width  = 90 px
+const GY = CH / 10;         // cell height = 56 px
+
+// Click on canvas → set target (accounts for CSS scaling)
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const sx   = CW / rect.width;
+  const sy   = CH / rect.height;
+  const px   = (e.clientX - rect.left) * sx;
+  const py   = (e.clientY - rect.top)  * sy;
+  const gx   = Math.min(9, Math.max(0, Math.floor(px / GX)));
+  const gy   = Math.min(9, Math.max(0, Math.floor(py / GY)));
+  sendAction({ action: 'SET_TARGET', x: gx, y: gy });
+  addLog(`Target set → (${gx}, ${gy})`, 'info');
+});
+
+// Toggle buttons
+document.getElementById('btnGrid').addEventListener('click', function () {
+  showGrid = !showGrid;
+  this.classList.toggle('active', showGrid);
+});
+document.getElementById('btnTrail').addEventListener('click', function () {
+  showTrail = !showTrail;
+  this.classList.toggle('active', showTrail);
+  if (!showTrail) trail = [];
+});
+document.getElementById('btnRadar').addEventListener('click', function () {
+  showRadar = !showRadar;
+  this.classList.toggle('active', showRadar);
+});
+
+// ── Main render loop ──────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, CW, CH);
+  ctx.fillStyle = '#020609';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // ── Grid lines
+  if (showGrid) {
+    ctx.strokeStyle = 'rgba(0,229,255,0.10)';
+    ctx.lineWidth   = 0.5;
+    for (let i = 0; i <= 10; i++) {
+      ctx.beginPath(); ctx.moveTo(i * GX, 0);  ctx.lineTo(i * GX, CH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * GY);  ctx.lineTo(CW, i * GY); ctx.stroke();
+    }
+    // Cell labels
+    ctx.fillStyle = 'rgba(0,229,255,0.18)';
+    ctx.font = '8px IBM Plex Mono, monospace';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    for (let gx = 0; gx < 10; gx++)
+      for (let gy = 0; gy < 10; gy++)
+        ctx.fillText(`${gx},${gy}`, gx * GX + 3, gy * GY + 3);
+  }
+
+  // ── Obstacles
+  backendState.obstacles.forEach(obs => {
+    ctx.fillStyle = 'rgba(255,51,85,0.40)';
+    ctx.fillRect(obs.x * GX + 1, obs.y * GY + 1, GX - 2, GY - 2);
+    ctx.strokeStyle = 'rgba(255,51,85,0.65)';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(obs.x * GX + 1, obs.y * GY + 1, GX - 2, GY - 2);
+  });
+
+  // ── Fuel stations
+  (backendState.fuelStations || []).forEach(fs => {
+    ctx.fillStyle = 'rgba(255,170,0,0.12)';
+    ctx.fillRect(fs.x * GX + 1, fs.y * GY + 1, GX - 2, GY - 2);
+    ctx.strokeStyle = 'rgba(255,170,0,0.55)';
+    ctx.lineWidth   = 1.5;
+    ctx.strokeRect(fs.x * GX + 3, fs.y * GY + 3, GX - 6, GY - 6);
+    ctx.fillStyle    = '#ffaa00';
+    ctx.font         = Math.min(GX, GY) * 0.46 + 'px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚡', fs.x * GX + GX / 2, fs.y * GY + GY / 2);
+  });
+
+  // ── Flight trail
+  if (showTrail && trail.length > 1) {
+    ctx.strokeStyle = 'rgba(0,229,255,0.28)';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    trail.forEach((pt, i) => {
+      const px = pt.x * GX + GX / 2;
+      const py = pt.y * GY + GY / 2;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.lineTo(
+      backendState.drone.x * GX + GX / 2,
+      backendState.drone.y * GY + GY / 2
+    );
+    ctx.stroke();
+  }
+
+  // ── Target
+  const tgx = backendState.target.x;
+  const tgy = backendState.target.y;
+  const tcx = tgx * GX + GX / 2;
+  const tcy = tgy * GY + GY / 2;
+  ctx.fillStyle = 'rgba(0,255,136,0.12)';
+  ctx.fillRect(tgx * GX + 1, tgy * GY + 1, GX - 2, GY - 2);
+  ctx.strokeStyle = 'rgba(0,255,136,0.75)';
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(tgx * GX + 2, tgy * GY + 2, GX - 4, GY - 4);
+  ctx.strokeStyle = '#00ff88';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath(); ctx.moveTo(tcx - 9, tcy); ctx.lineTo(tcx + 9, tcy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tcx, tcy - 9); ctx.lineTo(tcx, tcy + 9); ctx.stroke();
+
+  // ── Radar rings
+  if (showRadar) {
+    const rdx = backendState.drone.x * GX + GX / 2;
+    const rdy = backendState.drone.y * GY + GY / 2;
+    [2, 3].forEach(r => {
+      ctx.strokeStyle = 'rgba(0,229,255,0.12)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.arc(rdx, rdy, r * Math.min(GX, GY), 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  }
+
+  // ── Drone
+  const droneX = backendState.drone.x * GX + GX / 2;
+  const droneY = backendState.drone.y * GY + GY / 2;
+  const fuelPct = Math.max(0, backendState.drone.fuel) / 100;
+  const dColor  = fuelPct > 0.4 ? '#00e5ff' : fuelPct > 0.2 ? '#ffaa00' : '#ff3355';
+
+  // Glow halo
+  const grd = ctx.createRadialGradient(droneX, droneY, 2, droneX, droneY, 22);
+  grd.addColorStop(0, dColor + '66');
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(droneX, droneY, 22, 0, Math.PI * 2); ctx.fill();
+
+  // Arms + motor dots
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([ax, ay]) => {
+    const ex = droneX + ax * GX * 0.28;
+    const ey = droneY + ay * GY * 0.28;
+    ctx.strokeStyle = dColor + '99';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(droneX, droneY); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.fillStyle = dColor;
+    ctx.beginPath(); ctx.arc(ex, ey, 3.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Body
+  ctx.fillStyle = dColor;
+  ctx.beginPath(); ctx.arc(droneX, droneY, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#020609';
+  ctx.beginPath(); ctx.arc(droneX, droneY, 3, 0, Math.PI * 2); ctx.fill();
+
+  requestAnimationFrame(render);
+}
+render();
+
+// ── Fuel / altitude graph ─────────────────────────────────────────
+const graphCanvas = document.getElementById('graphCanvas');
+const gCtx        = graphCanvas.getContext('2d');
+graphCanvas.width  = graphCanvas.parentElement
+                       ? graphCanvas.parentElement.clientWidth || 260
+                       : 260;
+graphCanvas.height = 80;
+const fuelHistory  = Array(60).fill(100);
+
+function drawFuelGraph() {
+  const gw = graphCanvas.width;
+  gCtx.clearRect(0, 0, gw, 80);
+  gCtx.fillStyle = 'rgba(0,229,255,0.03)';
+  gCtx.fillRect(0, 0, gw, 80);
+
+  const w = gw / fuelHistory.length;
+  gCtx.strokeStyle = 'rgba(0,229,255,0.7)';
+  gCtx.lineWidth   = 1.5;
+  gCtx.beginPath();
+  fuelHistory.forEach((v, i) => {
+    const x = i * w;
+    const y = 80 - (Math.max(0, v) / 100) * 72;
+    i === 0 ? gCtx.moveTo(x, y) : gCtx.lineTo(x, y);
+  });
+  gCtx.stroke();
+
+  // Fill under line
+  gCtx.fillStyle = 'rgba(0,229,255,0.05)';
+  gCtx.lineTo(gw, 80); gCtx.lineTo(0, 80);
+  gCtx.closePath(); gCtx.fill();
+}
+
+// ── Telemetry UI update ───────────────────────────────────────────
+function updateTelemetryUI() {
+  const d    = backendState.drone;
+  const fuel = Math.max(0, Math.min(100, d.fuel));
+
+  // Battery card + nav bar
+  document.getElementById('t-batt').textContent  = Math.round(fuel);
+  document.getElementById('battPctNav').textContent = Math.round(fuel) + '%';
+  const battBar = document.getElementById('battBar');
+  battBar.style.width      = fuel + '%';
+  battBar.style.background = fuel > 40 ? 'var(--g)' : fuel > 20 ? 'var(--a)' : 'var(--r)';
+  const battDot = document.getElementById('battDot');
+  battDot.className = 'ind-dot ' + (fuel > 40 ? 'on' : fuel > 20 ? 'warn' : 'off');
+
+  // Mode badge
+  document.getElementById('modeBadge').textContent =
+    'MODE: ' + (stateNames[d.state] || 'UNKNOWN');
+
+  // Coordinate strip
+  const coordEl = document.getElementById('simCoord');
+  if (coordEl)
+    coordEl.textContent =
+      `Grid (${d.x}, ${d.y})  →  Target (${backendState.target.x}, ${backendState.target.y})`;
+
+  // Compass needle: point in direction of last movement
+  if (trail.length >= 1) {
+    const last  = trail[trail.length - 1];
+    const angle = Math.atan2(d.y - last.y, d.x - last.x) * (180 / Math.PI);
+    const needle = document.getElementById('compassNeedle');
+    if (needle) {
+      const rad = (angle - 90) * Math.PI / 180;
+      const cx = 24, cy = 24, r = 14;
+      const tip = { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+      needle.setAttribute('points',
+        `${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${cx-3},${cy} ${cx},${cy-2} ${cx+3},${cy}`);
+    }
+  }
+
+  // Fuel history graph
+  fuelHistory.push(fuel);
+  fuelHistory.shift();
+  drawFuelGraph();
+
+  // Log FSM state transitions
+  if (d.state !== lastStateLog) {
+    lastStateLog = d.state;
+    const msgs = {
+      0: 'Drone idle — awaiting command',
+      1: 'AI tracking target',
+      2: '⚠ Critical fuel — navigating to station',
+      3: 'Evading dynamic obstacle'
+    };
+    addLog(msgs[d.state] || 'State changed', d.state === 2 ? 'warn' : 'info');
+  }
+}
+
+// ── Flight log ────────────────────────────────────────────────────
+function addLog(msg, type = 'info') {
+  const log  = document.getElementById('flightLog');
+  const now  = new Date();
+  const ts   = [now.getHours(), now.getMinutes(), now.getSeconds()]
+               .map(n => String(n).padStart(2, '0')).join(':');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML =
+    `<span class="log-time">${ts}</span><span class="log-msg ${type}">${msg}</span>`;
+  log.prepend(entry);
+  while (log.children.length > 50) log.removeChild(log.lastChild);
+}
+
+// ── Mission timer ─────────────────────────────────────────────────
+setInterval(() => {
+  if (backendState.isRunning) missionTime++;
+  const h = Math.floor(missionTime / 3600);
+  const m = Math.floor((missionTime % 3600) / 60);
+  const s = missionTime % 60;
+  const fmt = [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
+  const el = document.getElementById('timeBadge');
+  if (el) el.textContent = 'T+ ' + fmt;
+}, 1000);
+
+// ── Hero particles ────────────────────────────────────────────────
+const heroBg = document.querySelector('.hero-bg');
+if (heroBg) {
+  for (let i = 0; i < 18; i++) {
+    const p    = document.createElement('div');
+    p.className = 'particle';
+    const size = Math.random() * 3 + 1;
+    Object.assign(p.style, {
+      width:             size + 'px',
+      height:            size + 'px',
+      left:              Math.random() * 100 + '%',
+      top:               Math.random() * 100 + '%',
+      '--dx':            (Math.random() * 60 - 30) + 'px',
+      animationDuration: (Math.random() * 8 + 6) + 's',
+      animationDelay:    (Math.random() * 8) + 's',
+      background: Math.random() > 0.5 ? 'var(--p)' : 'var(--b)'
+    });
+    heroBg.appendChild(p);
+  }
+}
+</script>
+</body>
+</html>
